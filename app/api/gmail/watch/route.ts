@@ -25,11 +25,11 @@ export async function POST(request: NextRequest) {
 
     const watchResult = await watchGmail(mfg.gmailAccessToken, mfg.gmailRefreshToken, topicName)
 
-    await adminDb.collection('manufacturers').doc(uid).update({
+    await adminDb.collection('manufacturers').doc(uid).set({
       gmailWatchExpiry: new Date(Number(watchResult.expiration)),
       gmailHistoryId: watchResult.historyId,
       updatedAt: FieldValue.serverTimestamp(),
-    })
+    }, { merge: true })
 
     return NextResponse.json({ success: true, expiration: watchResult.expiration })
   } catch (err) {

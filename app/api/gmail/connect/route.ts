@@ -13,14 +13,14 @@ export async function POST(request: NextRequest) {
     const decoded = await adminAuth.verifyIdToken(idToken)
     const uid = decoded.uid
 
-    // Store Gmail tokens first
-    await adminDb.collection('manufacturers').doc(uid).update({
+    // Store Gmail tokens — use set+merge so it works even if doc doesn't exist yet
+    await adminDb.collection('manufacturers').doc(uid).set({
       gmailConnected: true,
       gmailEmail: email ?? '',
       gmailAccessToken: accessToken,
       gmailRefreshToken: refreshToken ?? '',
       updatedAt: FieldValue.serverTimestamp(),
-    })
+    }, { merge: true })
 
     // Register Gmail watch — non-fatal if it fails
     const topicName = process.env.GMAIL_PUBSUB_TOPIC
