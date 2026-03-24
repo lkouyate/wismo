@@ -22,10 +22,13 @@ export default function Step4Page() {
     setErrorMsg('')
     try {
       const result = await signInWithPopup(auth, gmailProvider)
-      // Get OAuth credential for tokens
       const credential = GoogleAuthProvider.credentialFromResult(result)
       const accessToken = credential?.accessToken ?? ''
       const connectedEmail = result.user.email ?? ''
+
+      if (!accessToken) {
+        throw new Error('Google did not return an access token. Try signing out of Google first, then reconnect.')
+      }
 
       const idToken = await auth.currentUser!.getIdToken()
       const res = await fetch('/api/gmail/connect', {
@@ -37,7 +40,10 @@ export default function Step4Page() {
           email: connectedEmail,
         }),
       })
-      if (!res.ok) throw new Error('Failed to save Gmail connection')
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error ?? `API error ${res.status}`)
+      }
 
       setGmailEmail(connectedEmail)
       setStatus('connected')
