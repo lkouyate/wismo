@@ -37,8 +37,10 @@ interface PubSubMessage {
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify the request genuinely came from Google Cloud Pub/Sub
-    const valid = await verifyPubSubToken(request.headers.get('authorization'))
+    // Verify the request came from Google Cloud Pub/Sub (or a test call with CRON_SECRET)
+    const authHeader = request.headers.get('authorization')
+    const isTestCall = process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`
+    const valid = isTestCall || await verifyPubSubToken(authHeader)
     if (!valid) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
