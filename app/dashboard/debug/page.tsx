@@ -12,6 +12,30 @@ export default function DebugPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  async function testPipeline() {
+    if (!user) return
+    setLoading(true)
+    setError('')
+    try {
+      const idToken = await auth.currentUser!.getIdToken()
+      const res = await fetch('/api/agent/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idToken,
+          mode: 'test',
+          customerMessage: 'Hi, can you give me a status update on my recent order? When will it ship?',
+        }),
+      })
+      const data = await res.json()
+      setResult(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function runCheck() {
     if (!user) return
     setLoading(true)
@@ -43,9 +67,14 @@ export default function DebugPage() {
         Verifies every prerequisite for the full Gmail → Pub/Sub → Webhook → Claude pipeline.
       </p>
 
-      <button onClick={runCheck} disabled={loading} className="btn-primary" style={{ marginBottom: 24 }}>
-        {loading ? 'Checking...' : 'Run Status Check'}
-      </button>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+        <button onClick={runCheck} disabled={loading} className="btn-primary">
+          {loading ? 'Checking...' : 'Run Status Check'}
+        </button>
+        <button onClick={testPipeline} disabled={loading} className="btn-secondary">
+          {loading ? 'Running...' : 'Test Agent Pipeline'}
+        </button>
+      </div>
 
       {error && (
         <div style={{ background: '#fee2e2', color: '#991b1b', padding: '1rem', borderRadius: 9, marginBottom: 16 }}>
@@ -53,7 +82,13 @@ export default function DebugPage() {
         </div>
       )}
 
-      {result && (
+      {result && !('status' in result) && (
+        <div style={{ background: '#0a0a0a', color: '#86efac', padding: '1.25rem', borderRadius: 10, marginBottom: 24, fontFamily: 'monospace', fontSize: '0.78rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+          {JSON.stringify(result, null, 2)}
+        </div>
+      )}
+
+      {result && ('status' in result) && (
         <>
           {/* Overall status */}
           <div style={{
