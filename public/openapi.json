@@ -1,0 +1,393 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "WISMO API",
+    "version": "1.0.0",
+    "description": "Where Is My Order — AI-powered customer service for manufacturers. All endpoints require Firebase ID token authentication unless noted otherwise."
+  },
+  "servers": [
+    { "url": "https://app.trywismo.co", "description": "Production" },
+    { "url": "http://localhost:3000", "description": "Development" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "firebaseToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Firebase ID token passed in request body as `idToken`"
+      },
+      "cronSecret": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "CRON_SECRET for cron and webhook endpoints"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "requestId": { "type": "string" }
+        }
+      },
+      "Conversation": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "customerEmail": { "type": "string" },
+          "customerCompany": { "type": "string" },
+          "customerMessage": { "type": "string" },
+          "agentResponse": { "type": "string" },
+          "status": { "type": "string", "enum": ["resolved", "escalated", "draft", "draft_discarded"] },
+          "confidence": { "type": "string", "enum": ["high", "medium", "needs_attention"] },
+          "dataSources": { "type": "array", "items": { "type": "string" } },
+          "poNumber": { "type": "string" }
+        }
+      },
+      "TrackingResult": {
+        "type": "object",
+        "properties": {
+          "trackingNumber": { "type": "string" },
+          "carrier": { "type": "string", "enum": ["ups", "fedex", "usps", "dhl", "unknown"] },
+          "status": { "type": "string" },
+          "estimatedDelivery": { "type": "string" },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": { "type": "string" },
+                "time": { "type": "string" },
+                "location": { "type": "string" },
+                "description": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/agent/run": {
+      "post": {
+        "summary": "Run WISMO agent pipeline",
+        "description": "Extract PO from customer message, look up order data (Katana + QBO), track shipment, generate AI response. Can run in test mode.",
+        "tags": ["Agent"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["idToken"],
+                "properties": {
+                  "idToken": { "type": "string", "description": "Firebase ID token" },
+                  "mode": { "type": "string", "enum": ["test", "live"], "description": "test uses most recent order" },
+                  "customerEmail": { "type": "string" },
+                  "customerCompany": { "type": "string" },
+                  "customerMessage": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Agent response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "response": { "type": "string" },
+                    "confidence": { "type": "string" },
+                    "dataSources": { "type": "array", "items": { "type": "string" } },
+                    "poNumber": { "type": "string", "nullable": true },
+                    "orderData": { "type": "object", "nullable": true },
+                    "trackingData": { "$ref": "#/components/schemas/TrackingResult" },
+                    "conversationId": { "type": "string" },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid idToken" },
+          "402": { "description": "Billing limit reached" },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/gmail/webhook": {
+      "post": {
+        "summary": "Gmail Pub/Sub webhook",
+        "description": "Receives push notifications from Google Pub/Sub when new emails arrive. Processes up to 3 messages per invocation.",
+        "tags": ["Gmail"],
+        "security": [{ "cronSecret": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "object",
+                    "properties": {
+                      "data": { "type": "string", "description": "Base64-encoded JSON with emailAddress and historyId" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Processed successfully" },
+          "401": { "description": "Invalid Pub/Sub token" }
+        }
+      }
+    },
+    "/api/gmail/connect": {
+      "post": {
+        "summary": "Initiate Gmail OAuth flow",
+        "tags": ["Gmail"],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "idToken": { "type": "string" } } } } }
+        },
+        "responses": { "200": { "description": "Returns OAuth URL" } }
+      }
+    },
+    "/api/gmail/callback": {
+      "get": {
+        "summary": "Gmail OAuth callback",
+        "description": "Handles Google OAuth redirect, stores tokens, registers Gmail watch.",
+        "tags": ["Gmail"],
+        "parameters": [
+          { "name": "code", "in": "query", "schema": { "type": "string" } },
+          { "name": "state", "in": "query", "schema": { "type": "string" }, "description": "Manufacturer UID" }
+        ],
+        "responses": { "302": { "description": "Redirects to onboarding step 4" } }
+      }
+    },
+    "/api/gmail/send": {
+      "post": {
+        "summary": "Send or update a draft response via Gmail",
+        "tags": ["Gmail"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "idToken": { "type": "string" },
+                  "conversationId": { "type": "string" },
+                  "editedResponse": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Email sent" } }
+      }
+    },
+    "/api/gmail/disconnect": {
+      "post": {
+        "summary": "Disconnect Gmail integration",
+        "tags": ["Gmail"],
+        "responses": { "200": { "description": "Disconnected" } }
+      }
+    },
+    "/api/gmail/watch": {
+      "post": {
+        "summary": "Manually register Gmail watch",
+        "tags": ["Gmail"],
+        "responses": { "200": { "description": "Watch registered" } }
+      }
+    },
+    "/api/gmail/auth": {
+      "get": {
+        "summary": "Get Gmail OAuth URL",
+        "tags": ["Gmail"],
+        "responses": { "200": { "description": "Returns auth URL" } }
+      }
+    },
+    "/api/katana/test": {
+      "post": {
+        "summary": "Test Katana API connection",
+        "tags": ["Katana"],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "idToken": { "type": "string" }, "apiKey": { "type": "string" } } } } }
+        },
+        "responses": { "200": { "description": "Connection test result with order/customer counts" } }
+      }
+    },
+    "/api/katana/customers": {
+      "get": {
+        "summary": "List Katana customers",
+        "tags": ["Katana"],
+        "responses": { "200": { "description": "Array of customers and contacts" } }
+      }
+    },
+    "/api/katana/orders": {
+      "get": {
+        "summary": "List Katana orders",
+        "tags": ["Katana"],
+        "responses": { "200": { "description": "Array of sales orders" } }
+      }
+    },
+    "/api/ups/track": {
+      "get": {
+        "summary": "Track a UPS shipment",
+        "tags": ["Tracking"],
+        "parameters": [
+          { "name": "trackingNumber", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Tracking result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TrackingResult" } } } } }
+      }
+    },
+    "/api/customers/scan": {
+      "post": {
+        "summary": "Import customers from Katana",
+        "tags": ["Customers"],
+        "responses": { "200": { "description": "Import result with added/skipped counts" } }
+      }
+    },
+    "/api/quickbooks/connect": {
+      "get": {
+        "summary": "Get QuickBooks OAuth URL",
+        "tags": ["QuickBooks"],
+        "responses": { "200": { "description": "Returns QBO auth URL" } }
+      }
+    },
+    "/api/quickbooks/callback": {
+      "get": {
+        "summary": "QuickBooks OAuth callback",
+        "tags": ["QuickBooks"],
+        "responses": { "302": { "description": "Redirects to integrations page" } }
+      }
+    },
+    "/api/quickbooks/disconnect": {
+      "post": {
+        "summary": "Disconnect QuickBooks integration",
+        "tags": ["QuickBooks"],
+        "responses": { "200": { "description": "Disconnected" } }
+      }
+    },
+    "/api/quickbooks/test": {
+      "get": {
+        "summary": "Test QuickBooks connection",
+        "tags": ["QuickBooks"],
+        "responses": { "200": { "description": "Company name and invoice count" } }
+      }
+    },
+    "/api/quickbooks/invoice": {
+      "get": {
+        "summary": "Look up invoice by PO number",
+        "tags": ["QuickBooks"],
+        "parameters": [
+          { "name": "po", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Invoice data or null" } }
+      }
+    },
+    "/api/auth/session": {
+      "post": {
+        "summary": "Create session cookie",
+        "tags": ["Auth"],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "idToken": { "type": "string" } } } } }
+        },
+        "responses": { "200": { "description": "Session cookie set" } }
+      },
+      "delete": {
+        "summary": "Delete session cookie (logout)",
+        "tags": ["Auth"],
+        "responses": { "200": { "description": "Session cleared" } }
+      }
+    },
+    "/api/billing/checkout-session": {
+      "post": {
+        "summary": "Create Stripe checkout session",
+        "tags": ["Billing"],
+        "responses": { "200": { "description": "Checkout URL" } }
+      }
+    },
+    "/api/billing/portal": {
+      "post": {
+        "summary": "Create Stripe billing portal session",
+        "tags": ["Billing"],
+        "responses": { "200": { "description": "Portal URL" } }
+      }
+    },
+    "/api/billing/webhook": {
+      "post": {
+        "summary": "Stripe webhook",
+        "description": "Handles checkout.session.completed, customer.subscription.updated/deleted events.",
+        "tags": ["Billing"],
+        "responses": { "200": { "description": "Processed" } }
+      }
+    },
+    "/api/account/export": {
+      "get": {
+        "summary": "Export all account data",
+        "tags": ["Account"],
+        "responses": { "200": { "description": "JSON export of manufacturer data" } }
+      }
+    },
+    "/api/account/delete": {
+      "post": {
+        "summary": "Delete manufacturer account",
+        "tags": ["Account"],
+        "responses": { "200": { "description": "Account deleted" } }
+      }
+    },
+    "/api/debug/status": {
+      "post": {
+        "summary": "System debug status",
+        "tags": ["Debug"],
+        "responses": { "200": { "description": "System health info" } }
+      }
+    },
+    "/api/cron/renew-gmail-watch": {
+      "get": {
+        "summary": "Renew Gmail watches for all manufacturers",
+        "description": "Called by Vercel Cron every 6 days. Processes in batches of 5 with retry.",
+        "tags": ["Cron"],
+        "security": [{ "cronSecret": [] }],
+        "responses": { "200": { "description": "Renewal results" } }
+      }
+    },
+    "/api/admin/set-claim": {
+      "post": { "summary": "Set Firebase custom claims", "tags": ["Admin"], "responses": { "200": { "description": "Claim set" } } }
+    },
+    "/api/admin/log-audit": {
+      "post": { "summary": "Log admin audit event", "tags": ["Admin"], "responses": { "200": { "description": "Logged" } } }
+    },
+    "/api/admin/delete-account": {
+      "post": { "summary": "Admin delete manufacturer account", "tags": ["Admin"], "responses": { "200": { "description": "Deleted" } } }
+    },
+    "/api/admin/run-cron": {
+      "post": { "summary": "Manually trigger a cron job", "tags": ["Admin"], "responses": { "200": { "description": "Triggered" } } }
+    },
+    "/api/admin/toggle-account": {
+      "post": { "summary": "Enable/disable manufacturer account", "tags": ["Admin"], "responses": { "200": { "description": "Toggled" } } }
+    },
+    "/api/admin/trigger-run": {
+      "post": { "summary": "Trigger agent run for a manufacturer", "tags": ["Admin"], "responses": { "200": { "description": "Triggered" } } }
+    }
+  },
+  "tags": [
+    { "name": "Agent", "description": "Core WISMO AI agent pipeline" },
+    { "name": "Gmail", "description": "Gmail OAuth and email processing" },
+    { "name": "Katana", "description": "Katana MRP integration" },
+    { "name": "QuickBooks", "description": "QuickBooks Online integration" },
+    { "name": "Tracking", "description": "Shipment tracking (multi-carrier)" },
+    { "name": "Customers", "description": "Customer management" },
+    { "name": "Auth", "description": "Authentication and sessions" },
+    { "name": "Billing", "description": "Stripe billing and subscriptions" },
+    { "name": "Account", "description": "Account management" },
+    { "name": "Admin", "description": "Admin-only operations" },
+    { "name": "Cron", "description": "Scheduled jobs" },
+    { "name": "Debug", "description": "Debug and diagnostics" }
+  ]
+}

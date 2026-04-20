@@ -1,6 +1,5 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
 import { useAuth } from '@/components/providers/FirebaseProvider'
@@ -29,6 +28,45 @@ export default function DebugPage() {
       })
       const data = await res.json()
       setResult(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function simulatePubSub() {
+    if (!user) return
+    setLoading(true)
+    setError('')
+    try {
+      // First get the stored historyId from the status check
+      const idToken = await auth.currentUser!.getIdToken()
+      const statusRes = await fetch('/api/debug/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      })
+      const statusData = await statusRes.json()
+      const historyId = statusData?.status?.gmailHistoryId
+      const gmailEmail = statusData?.status?.gmailEmail
+
+      if (!historyId || historyId === 'NOT SET') {
+        throw new Error('No gmailHistoryId in Firestore. Gmail watch may not be registered.')
+      }
+
+      // Build a Pub/Sub-style payload and send directly to webhook
+      const pubsubData = Buffer.from(JSON.stringify({ emailAddress: gmailEmail, historyId })).toString('base64')
+      const res = await fetch('/api/gmail/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET ?? 'wismo-test-secret-2026'}`,
+        },
+        body: JSON.stringify({ message: { data: pubsubData, attributes: { emailAddress: gmailEmail } } }),
+      })
+      const data = await res.json()
+      setResult({ simulatePubSub: true, historyId, gmailEmail, webhookResponse: data, httpStatus: res.status })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed')
     } finally {
@@ -67,12 +105,18 @@ export default function DebugPage() {
         Verifies every prerequisite for the full Gmail → Pub/Sub → Webhook → Claude pipeline.
       </p>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
         <button onClick={runCheck} disabled={loading} className="btn-primary">
           {loading ? 'Checking...' : 'Run Status Check'}
         </button>
         <button onClick={testPipeline} disabled={loading} className="btn-secondary">
           {loading ? 'Running...' : 'Test Agent Pipeline'}
+        </button>
+        <button onClick={simulatePubSub} disabled={loading} style={{
+          padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.85rem', fontWeight: 600,
+          background: '#7c3aed', color: 'white', border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
+        }}>
+          {loading ? 'Simulating...' : 'Simulate Pub/Sub → Webhook'}
         </button>
       </div>
 

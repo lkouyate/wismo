@@ -1,52 +1,43 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/providers/FirebaseProvider'
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth'
 import { doc, updateDoc } from 'firebase/firestore'
-import { auth, db, gmailProvider } from '@/lib/firebase-client'
+import { auth, db } from '@/lib/firebase-client'
 
-export default function Step4Page() {
+function Step4Inner() {
   const { user } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [gmailEmail, setGmailEmail] = useState('')
+
+  // Handle OAuth2 callback params
+  useEffect(() => {
+    const connected = searchParams.get('connected')
+    const email = searchParams.get('email')
+    const error = searchParams.get('error')
+
+    if (connected === 'true') {
+      setGmailEmail(decodeURIComponent(email ?? ''))
+      setStatus('connected')
+    } else if (error) {
+      setErrorMsg(decodeURIComponent(error))
+      setStatus('error')
+    }
+  }, [searchParams])
 
   async function handleConnectGmail() {
     if (!user) return
     setStatus('connecting')
     setErrorMsg('')
     try {
-      const result = await signInWithPopup(auth, gmailProvider)
-      const credential = GoogleAuthProvider.credentialFromResult(result)
-      const accessToken = credential?.accessToken ?? ''
-      const connectedEmail = result.user.email ?? ''
-
-      if (!accessToken) {
-        throw new Error('Google did not return an access token. Try signing out of Google first, then reconnect.')
-      }
-
       const idToken = await auth.currentUser!.getIdToken()
-      const res = await fetch('/api/gmail/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          idToken,
-          accessToken,
-          email: connectedEmail,
-        }),
-      })
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error ?? `API error ${res.status}`)
-      }
-
-      setGmailEmail(connectedEmail)
-      setStatus('connected')
+      // Redirect to server-side OAuth2 flow (gets real refresh token)
+      window.location.href = `/api/gmail/auth?idToken=${encodeURIComponent(idToken)}`
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Connection failed')
       setStatus('error')
@@ -67,28 +58,44 @@ export default function Step4Page() {
       </p>
 
       <div className="card" style={{ maxWidth: 600 }}>
-        {/* Privacy disclosure */}
+        {/* Privacy disclosure — don'ts first per PRD §9.1 */}
         <div style={{ marginBottom: 24 }}>
-          <div style={{ fontWeight: 600, marginBottom: 12, fontSize: '0.9rem' }}>
-            What WISMO will and won&apos;t do with Gmail access:
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4, fontSize: '0.9rem' }}>What WISMO will never do</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginBottom: 10 }}>Reassurance first.</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
             {[
-              { icon: '✓', color: '#166534', bg: '#dcfce7', text: 'Read incoming emails from known customers' },
-              { icon: '✓', color: '#166534', bg: '#dcfce7', text: 'Send replies on your behalf (in draft or live mode)' },
-              { icon: '✓', color: '#166534', bg: '#dcfce7', text: 'Identify new customer contacts from your inbox' },
-              { icon: '✗', color: '#991b1b', bg: '#fee2e2', text: 'Never read personal or non-customer emails' },
-              { icon: '✗', color: '#991b1b', bg: '#fee2e2', text: 'Never delete, archive or label messages' },
-              { icon: '✗', color: '#991b1b', bg: '#fee2e2', text: 'Never share your data with third parties' },
-            ].map((item, i) => (
+              'Read emails from unknown senders — if the sender\'s domain is not on your customer list, WISMO ignores the email completely',
+              'Send emails on your behalf without your explicit configuration',
+              'Store your email content — emails are read in memory and discarded immediately after processing',
+              'Access any folder other than your inbox — not sent items, drafts, archived email, or any labels',
+            ].map((text, i) => (
               <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
+                display: 'flex', alignItems: 'flex-start', gap: 8,
                 padding: '0.5rem 0.75rem',
-                background: item.bg,
+                background: '#fee2e2',
                 borderRadius: 6, fontSize: '0.8rem',
               }}>
-                <span style={{ color: item.color, fontWeight: 700, fontSize: '0.85rem' }}>{item.icon}</span>
-                <span style={{ color: item.color }}>{item.text}</span>
+                <span style={{ color: '#991b1b', fontWeight: 700, flexShrink: 0 }}>✗</span>
+                <span style={{ color: '#991b1b' }}>{text}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontWeight: 600, marginBottom: 10, fontSize: '0.9rem' }}>What WISMO does do</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {[
+              'Watch for new emails from known customer domains',
+              'Read the subject line and email body to find PO numbers and understand the query',
+              'Scan the thread history to find PO numbers mentioned in earlier messages',
+            ].map((text, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                padding: '0.5rem 0.75rem',
+                background: '#dcfce7',
+                borderRadius: 6, fontSize: '0.8rem',
+              }}>
+                <span style={{ color: '#166534', fontWeight: 700, flexShrink: 0 }}>✓</span>
+                <span style={{ color: '#166534' }}>{text}</span>
               </div>
             ))}
           </div>
@@ -96,29 +103,36 @@ export default function Step4Page() {
 
         {status === 'connected' ? (
           <div style={{ marginBottom: 16 }}>
-            <div style={{ background: '#dcfce7', borderRadius: 9, padding: '0.75rem 1rem', marginBottom: 12 }}>
+            <div style={{ background: '#dcfce7', borderRadius: 9, padding: '0.75rem 1rem', marginBottom: 16 }}>
               <div style={{ color: '#166534', fontWeight: 600, marginBottom: 4 }}>✓ Gmail connected</div>
               <div style={{ color: '#15803d', fontSize: '0.8rem' }}>{gmailEmail}</div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+
+            {/* Post-connection confirmation — don'ts lead per PRD §9.3 */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
               {[
-                { icon: '📬', label: 'Receive emails', desc: 'Active' },
-                { icon: '📤', label: 'Send replies', desc: 'Draft mode on' },
-                { icon: '👥', label: 'Customer scan', desc: 'Ready' },
-                { icon: '🔔', label: 'Notifications', desc: 'Enabled' },
+                { icon: '✗', label: 'Never stores email content', color: '#991b1b', bg: '#fee2e2' },
+                { icon: '✗', label: 'Never accesses other folders', color: '#991b1b', bg: '#fee2e2' },
+                { icon: '✓', label: 'Monitors known customer domains', color: '#166534', bg: '#dcfce7' },
+                { icon: '✓', label: 'Reads subject line and email body only', color: '#166534', bg: '#dcfce7' },
               ].map((item) => (
                 <div key={item.label} style={{
-                  padding: '0.75rem', background: 'var(--gray-50)',
-                  borderRadius: 9, fontSize: '0.8rem',
+                  padding: '0.75rem', background: item.bg,
+                  borderRadius: 9, fontSize: '0.75rem', color: item.color,
+                  display: 'flex', gap: 6, alignItems: 'flex-start',
                 }}>
-                  <div style={{ marginBottom: 4 }}>{item.icon} {item.label}</div>
-                  <div style={{ color: 'var(--gray-500)' }}>{item.desc}</div>
+                  <span style={{ fontWeight: 700, flexShrink: 0 }}>{item.icon}</span>
+                  <span>{item.label}</span>
                 </div>
               ))}
             </div>
-            <button onClick={handleContinue} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+
+            <button onClick={handleContinue} className="btn-primary" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}>
               Continue →
             </button>
+            <p style={{ fontSize: '0.7rem', color: 'var(--gray-400)', textAlign: 'center' }}>
+              You can disconnect at any time from Settings → Channels
+            </p>
           </div>
         ) : (
           <>
@@ -131,7 +145,7 @@ export default function Step4Page() {
               fontSize: '0.8rem',
               color: '#92400e',
             }}>
-              <strong>Note:</strong> Google will show a warning screen because WISMO is not yet verified by Google. Click &quot;Advanced&quot; → &quot;Continue to WISMO&quot; to proceed. This is expected for new apps.
+              <strong>Heads up:</strong> The Google screen you&apos;ll see next says &quot;Read all your email messages&quot; — that&apos;s Google&apos;s standard wording for any email integration. In practice, WISMO only reads emails from your known customer domains, in your inbox only.
             </div>
             <button
               onClick={handleConnectGmail}
@@ -142,7 +156,7 @@ export default function Step4Page() {
               {status === 'connecting' ? (
                 <>
                   <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.6s linear infinite' }} />
-                  Connecting...
+                  Redirecting to Google...
                 </>
               ) : (
                 <>
@@ -163,13 +177,29 @@ export default function Step4Page() {
               </div>
             )}
 
-            <button onClick={handleContinue} className="btn-secondary" style={{ width: '100%', justifyContent: 'center' }}>
-              Skip for now
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => router.push('/onboarding/step-3')} className="btn-secondary" style={{ justifyContent: 'center' }}>
+                ← Back
+              </button>
+              <button onClick={handleContinue} className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }}>
+                Skip for now
+              </button>
+            </div>
+            <p style={{ fontSize: '0.7rem', color: 'var(--gray-400)', textAlign: 'center', marginTop: 8 }}>
+              You can connect Gmail at any time from Settings → Channels
+            </p>
           </>
         )}
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
+  )
+}
+
+export default function Step4Page() {
+  return (
+    <Suspense>
+      <Step4Inner />
+    </Suspense>
   )
 }

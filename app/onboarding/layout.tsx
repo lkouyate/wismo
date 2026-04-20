@@ -1,6 +1,5 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
 
 import { usePathname } from 'next/navigation'
 import { StepNav } from '@/components/onboarding/StepNav'
@@ -21,15 +20,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
         alignItems: 'center',
         justifyContent: 'space-between',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: '1.1rem' }}>
-          <div style={{
-            width: 28, height: 28, background: 'var(--black)', borderRadius: 6,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <span style={{ color: 'white', fontSize: 12, fontWeight: 800 }}>W</span>
-          </div>
-          WISMO
-        </div>
+        <img src="/wismo-logo.svg" alt="WISMO" style={{ height: 'clamp(28px, 3vw, 36px)', width: 'auto', maxWidth: '160px' }} />
         <span style={{ fontSize: '0.8rem', color: 'var(--gray-500)' }}>
           Step {currentStep} of 6
         </span>

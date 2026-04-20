@@ -1,0 +1,110 @@
+{
+  "dashboard": {
+    "title": "WISMO — Business Metrics",
+    "uid": "wismo-business",
+    "tags": ["wismo", "business"],
+    "timezone": "browser",
+    "refresh": "5m",
+    "time": { "from": "now-7d", "to": "now" },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Queries This Month (all manufacturers)",
+        "type": "stat",
+        "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(wismo_queries_this_month)",
+            "legendFormat": "Total queries"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Accept-as-is Rate",
+        "type": "gauge",
+        "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(wismo_drafts_accepted_total) / sum(wismo_drafts_total) * 100",
+            "legendFormat": "Accept rate %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 100,
+            "unit": "percent",
+            "thresholds": {
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "yellow", "value": 60 },
+                { "color": "green", "value": 80 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Active Manufacturers",
+        "type": "stat",
+        "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "count(wismo_queries_this_month > 0)",
+            "legendFormat": "Active"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Escalation Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_escalations_total[1h])) / sum(rate(wismo_responses_total[1h])) * 100",
+            "legendFormat": "Escalation %"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Queries Over Time",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 6 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_responses_total[1h])) by (confidence)",
+            "legendFormat": "{{confidence}}"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Avg Edit Distance (7d rolling)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+        "targets": [
+          {
+            "expr": "avg(wismo_edit_distance_chars) by (manufacturer)",
+            "legendFormat": "{{manufacturer}}"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Data Source Hit Rate",
+        "type": "piechart",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+        "targets": [
+          {
+            "expr": "sum(wismo_data_source_hits_total) by (source)",
+            "legendFormat": "{{source}}"
+          }
+        ]
+      }
+    ]
+  }
+}

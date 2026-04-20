@@ -1,6 +1,5 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -88,13 +87,22 @@ export default function Step2Page() {
           UPS is pre-connected using WISMO platform credentials. Your customers will see tracking data automatically pulled into responses.
         </div>
 
-        <button
-          onClick={handleContinue}
-          className="btn-primary"
-          style={{ marginTop: 20, width: '100%', justifyContent: 'center' }}
-        >
-          Continue →
-        </button>
+        <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
+          <button
+            onClick={() => router.push('/onboarding/step-1')}
+            className="btn-secondary"
+            style={{ flex: '0 0 auto', justifyContent: 'center' }}
+          >
+            ← Back
+          </button>
+          <button
+            onClick={handleContinue}
+            className="btn-primary"
+            style={{ flex: 1, justifyContent: 'center' }}
+          >
+            Continue →
+          </button>
+        </div>
         <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray-400)', marginTop: 8 }}>
           Auto-advancing in a moment...
         </p>

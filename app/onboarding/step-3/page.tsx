@@ -1,9 +1,9 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+
 import { useAuth } from '@/components/providers/FirebaseProvider'
 import { doc, updateDoc } from 'firebase/firestore'
 import { db, auth } from '@/lib/firebase-client'
@@ -96,9 +96,14 @@ export default function Step3Page() {
               <strong>Email scan:</strong> Connect Gmail in Step 4 to automatically discover customers from your inbox.
             </div>
 
-            <button onClick={handleContinue} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-              Continue →
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => router.push('/onboarding/step-2')} className="btn-secondary" style={{ justifyContent: 'center' }}>
+                ← Back
+              </button>
+              <button onClick={handleContinue} className="btn-primary" style={{ flex: 1, justifyContent: 'center' }}>
+                Continue →
+              </button>
+            </div>
           </>
         )}
 
@@ -107,12 +112,15 @@ export default function Step3Page() {
             <div style={{ background: '#fee2e2', borderRadius: 9, padding: '0.75rem 1rem', marginBottom: 16 }}>
               <div style={{ color: '#991b1b', fontSize: '0.875rem' }}>✗ {errorMsg}</div>
             </div>
-            <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => router.push('/onboarding/step-2')} className="btn-secondary" style={{ justifyContent: 'center' }}>
+                ← Back
+              </button>
               <button onClick={handleScan} className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }}>
                 Retry
               </button>
               <button onClick={handleContinue} className="btn-primary" style={{ flex: 1, justifyContent: 'center' }}>
-                Skip for now →
+                Skip →
               </button>
             </div>
           </>

@@ -13,14 +13,20 @@ function getAdminApp() {
   })
 }
 
+// Cache instances — getFirestore/getAuth are called once and reused across requests
+let _db: ReturnType<typeof getFirestore> | null = null
+let _auth: ReturnType<typeof getAuth> | null = null
+
 export const adminDb = new Proxy({} as ReturnType<typeof getFirestore>, {
   get(_, prop) {
-    return Reflect.get(getFirestore(getAdminApp()), prop)
+    if (!_db) _db = getFirestore(getAdminApp())
+    return Reflect.get(_db, prop)
   },
 })
 
 export const adminAuth = new Proxy({} as ReturnType<typeof getAuth>, {
   get(_, prop) {
-    return Reflect.get(getAuth(getAdminApp()), prop)
+    if (!_auth) _auth = getAuth(getAdminApp())
+    return Reflect.get(_auth, prop)
   },
 })

@@ -11,6 +11,11 @@ export interface Manufacturer {
   gmailEmail?: string
   gmailAccessToken?: string
   gmailRefreshToken?: string
+  qboConnected: boolean
+  qboRealmId?: string
+  qboAccessToken?: string
+  qboRefreshToken?: string
+  qboTokenExpiry?: number
   onboardingStep: number
   onboardingComplete: boolean
   isLive: boolean
@@ -96,4 +101,22 @@ export interface UPSTrackingResult {
   status: string
   estimatedDelivery?: string
   events: UPSTrackingEvent[]
+}
+
+export interface QBOInvoice {
+  id: string
+  docNumber: string
+  txnDate: string
+  shipDate?: string
+  trackingNum?: string
+  totalAmt: number
+  balance: number
+  status: 'invoiced' | 'partial' | 'not_invoiced'
+  customerRef: { value: string; name: string }
+}
+
+export interface QBOTokens {
+  accessToken: string
+  refreshToken: string
+  expiresIn: number
 }

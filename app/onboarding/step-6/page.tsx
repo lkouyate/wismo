@@ -1,6 +1,5 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -60,7 +59,7 @@ export default function Step6Page() {
               <div>
                 <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Draft Mode (Recommended)</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--gray-500)', marginTop: 4 }}>
-                  WISMO generates responses but holds them for your review before sending. Perfect for getting started.
+                  Agent composes responses but holds them for your review. You approve, edit, or discard before anything is sent. Turn it off whenever you feel confident.
                 </div>
               </div>
             </button>
@@ -86,7 +85,7 @@ export default function Step6Page() {
               <div>
                 <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Auto-send Mode</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--gray-500)', marginTop: 4 }}>
-                  WISMO sends responses automatically for high-confidence replies. Escalations are still routed to you.
+                  The agent will respond automatically within 10 minutes of receiving an email. Escalations are still routed to your team.
                 </div>
               </div>
             </button>
@@ -97,19 +96,29 @@ export default function Step6Page() {
           You can change this anytime in <strong>Settings → Channels</strong>.
         </div>
 
-        <button
-          onClick={handleGoLive}
-          disabled={loading}
-          className="btn-primary"
-          style={{ width: '100%', justifyContent: 'center', fontSize: '1rem', padding: '0.75rem' }}
-        >
-          {loading ? (
-            <>
-              <span style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.6s linear infinite' }} />
-              Activating...
-            </>
-          ) : '🚀 Go Live'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => router.push('/onboarding/step-5')}
+            disabled={loading}
+            className="btn-secondary"
+            style={{ justifyContent: 'center' }}
+          >
+            ← Back
+          </button>
+          <button
+            onClick={handleGoLive}
+            disabled={loading}
+            className="btn-primary"
+            style={{ flex: 1, justifyContent: 'center', fontSize: '1rem', padding: '0.75rem' }}
+          >
+            {loading ? (
+              <>
+                <span style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.6s linear infinite' }} />
+                Activating...
+              </>
+            ) : '🚀 Go Live'}
+          </button>
+        </div>
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>

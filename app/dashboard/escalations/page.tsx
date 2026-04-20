@@ -1,17 +1,19 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/components/providers/FirebaseProvider'
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, Timestamp, arrayUnion } from 'firebase/firestore'
 import { db } from '@/lib/firebase-client'
-import { formatDistanceToNow, isPast } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns'
+import Link from 'next/link'
 
 interface Escalation {
   id: string
   conversationId: string
   reason: string
+  customerEmail?: string
+  customerCompany?: string
   slaDeadline: Timestamp
   status: 'open' | 'resolved'
   assignedTo: string | null
@@ -24,12 +26,6 @@ export default function EscalationsPage() {
   const [escalations, setEscalations] = useState<Escalation[]>([])
   const [loading, setLoading] = useState(true)
   const [noteInput, setNoteInput] = useState<Record<string, string>>({})
-  const [now, setNow] = useState(() => new Date())
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30_000)
-    return () => clearInterval(timer)
-  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -78,8 +74,8 @@ export default function EscalationsPage() {
       ) : (
         escalations.map((e) => {
           const deadline = e.slaDeadline?.toDate?.()
-          const overdue = deadline ? deadline.getTime() < now.getTime() : false
-          const minsLeft = deadline ? Math.round((deadline.getTime() - now.getTime()) / 60000) : null
+          const overdue = deadline ? deadline.getTime() < Date.now() : false
+          const minsLeft = deadline ? Math.round((deadline.getTime() - Date.now()) / 60000) : null
 
           return (
             <div key={e.id} style={{
@@ -92,8 +88,24 @@ export default function EscalationsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{e.reason}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>
-                    {e.createdAt?.toDate ? formatDistanceToNow(e.createdAt.toDate(), { addSuffix: true }) : ''}
+                  {(e.customerCompany || e.customerEmail) && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--gray-600)', marginBottom: 2 }}>
+                      {e.customerCompany ?? e.customerEmail}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>
+                      {e.createdAt?.toDate ? formatDistanceToNow(e.createdAt.toDate(), { addSuffix: true }) : ''}
+                    </div>
+                    {e.conversationId && (
+                      <Link
+                        href="/dashboard/conversations"
+                        style={{ fontSize: '0.7rem', color: 'var(--gray-400)', textDecoration: 'underline' }}
+                        title={`Conversation ID: ${e.conversationId}`}
+                      >
+                        View conversation →
+                      </Link>
+                    )}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>

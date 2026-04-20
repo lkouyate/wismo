@@ -1,0 +1,96 @@
+{
+  "dashboard": {
+    "title": "WISMO — Pipeline Health",
+    "uid": "wismo-pipeline",
+    "tags": ["wismo", "pipeline"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": { "from": "now-6h", "to": "now" },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Queue Depth",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "wismo_queue_depth",
+            "legendFormat": "Pending jobs"
+          },
+          {
+            "expr": "wismo_dlq_depth",
+            "legendFormat": "Dead letter queue"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Job Processing Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "rate(wismo_jobs_processed_total{status=\"success\"}[5m])",
+            "legendFormat": "Success/s"
+          },
+          {
+            "expr": "rate(wismo_jobs_processed_total{status=\"failed\"}[5m])",
+            "legendFormat": "Failed/s"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Circuit Breaker Status",
+        "type": "state-timeline",
+        "gridPos": { "h": 6, "w": 24, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "wismo_circuit_breaker_state{service=\"gmail\"}",
+            "legendFormat": "Gmail"
+          },
+          {
+            "expr": "wismo_circuit_breaker_state{service=\"katana\"}",
+            "legendFormat": "Katana"
+          },
+          {
+            "expr": "wismo_circuit_breaker_state{service=\"quickbooks\"}",
+            "legendFormat": "QuickBooks"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Webhook Latency (enqueue)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(wismo_webhook_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(wismo_webhook_duration_seconds_bucket[5m]))",
+            "legendFormat": "P50"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Worker Job Duration",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(wismo_worker_job_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(wismo_worker_job_duration_seconds_bucket[5m]))",
+            "legendFormat": "P50"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "dashboard": {
+    "title": "WISMO — Error Explorer",
+    "uid": "wismo-errors",
+    "tags": ["wismo", "errors"],
+    "timezone": "browser",
+    "refresh": "1m",
+    "time": { "from": "now-24h", "to": "now" },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Error Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_errors_total[5m])) by (route)",
+            "legendFormat": "{{route}}"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Top Errors (24h)",
+        "type": "table",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "topk(20, sum by (route, error_type) (increase(wismo_errors_total[24h])))",
+            "legendFormat": "{{route}} — {{error_type}}",
+            "format": "table",
+            "instant": true
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "HTTP Status Codes",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(rate(http_server_requests_total[5m])) by (status_code)",
+            "legendFormat": "{{status_code}}"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Failed Jobs by Error",
+        "type": "table",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "targets": [
+          {
+            "expr": "topk(10, sum by (error) (increase(wismo_jobs_processed_total{status=\"failed\"}[24h])))",
+            "legendFormat": "{{error}}",
+            "format": "table",
+            "instant": true
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Trace Error Explorer",
+        "type": "traces",
+        "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+        "datasource": { "type": "tempo" },
+        "targets": [
+          {
+            "queryType": "search",
+            "search": "status=error",
+            "serviceName": "wismo-dashboard"
+          }
+        ]
+      }
+    ]
+  }
+}

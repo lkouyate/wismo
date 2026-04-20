@@ -1,11 +1,18 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { UPSTrackingResult } from '@/types'
+import { UPSTrackingResult, QBOInvoice } from '@/types'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+function isRateLimit(err: unknown): boolean {
+  return (
+    err instanceof Anthropic.RateLimitError ||
+    (err instanceof Error && err.message.includes('429'))
+  )
+}
+
 export async function extractPONumber(emailBody: string): Promise<string | null> {
   const msg = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 64,
     messages: [
       {
@@ -24,6 +31,7 @@ interface GenerateResponseOptions {
   customerMessage: string
   orderData: Record<string, unknown> | null
   trackingData: UPSTrackingResult | null
+  qboData?: QBOInvoice | null
   responseStyle?: 'professional' | 'friendly' | 'concise'
   customSignature?: string
 }
@@ -46,6 +54,11 @@ export async function generateWISMOResponse(opts: GenerateResponseOptions): Prom
     contextBlock += `\nUPS TRACKING DATA:\n${JSON.stringify(opts.trackingData, null, 2)}\n`
   }
 
+  if (opts.qboData) {
+    dataSources.push('quickbooks')
+    contextBlock += `\nQUICKBOOKS INVOICE DATA:\n${JSON.stringify(opts.qboData, null, 2)}\n`
+  }
+
   const styleInstructions = {
     professional: 'Use a professional, formal tone.',
     friendly: 'Use a warm, friendly tone.',
@@ -66,17 +79,31 @@ Rules:
 AVAILABLE CONTEXT:${contextBlock || '\n(No order or tracking data found for this inquiry)'}
 `
 
-  const msg = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 512,
-    system: systemPrompt,
-    messages: [
-      {
-        role: 'user',
-        content: `Customer email from ${opts.customerCompany} (${opts.customerEmail}):\n\n${opts.customerMessage}`,
-      },
-    ],
-  })
+  let msg
+  try {
+    msg = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 512,
+      system: systemPrompt,
+      messages: [
+        {
+          role: 'user',
+          content: `Customer email from ${opts.customerCompany} (${opts.customerEmail}):\n\n${opts.customerMessage}`,
+        },
+      ],
+    })
+  } catch (err) {
+    if (isRateLimit(err)) {
+      // Return a graceful degraded response so the caller can save as draft
+      // instead of propagating the error and causing Pub/Sub infinite retries
+      return {
+        response: "Thank you for reaching out. We've received your inquiry and will follow up shortly.",
+        confidence: 'needs_attention',
+        dataSources,
+      }
+    }
+    throw err
+  }
 
   const response = msg.content[0].type === 'text' ? msg.content[0].text : ''
 

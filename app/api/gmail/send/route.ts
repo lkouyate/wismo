@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { adminAuth, adminDb } from '@/lib/firebase-admin'
 import { sendEmail } from '@/lib/gmail'
 import { FieldValue } from 'firebase-admin/firestore'
+import { decryptToken, isEncrypted } from '@/lib/crypto'
+
+function safeDecrypt(value: string): string {
+  return isEncrypted(value) ? decryptToken(value) : value
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,8 +46,8 @@ export async function POST(request: NextRequest) {
       : 'Re: Order Status Update'
 
     await sendEmail({
-      accessToken: mfg.gmailAccessToken,
-      refreshToken: mfg.gmailRefreshToken,
+      accessToken: safeDecrypt(mfg.gmailAccessToken),
+      refreshToken: safeDecrypt(mfg.gmailRefreshToken),
       to: conv.customerEmail,
       subject,
       body: responseText,

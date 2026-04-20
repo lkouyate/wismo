@@ -1,6 +1,5 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/components/providers/FirebaseProvider'
@@ -8,6 +7,7 @@ import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, addDoc, 
 import { db } from '@/lib/firebase-client'
 import { auth } from '@/lib/firebase-client'
 import { DraftCard } from '@/components/dashboard/DraftCard'
+import { useToast } from '@/components/ui/Toast'
 
 interface Draft {
   id: string
@@ -24,6 +24,8 @@ export default function DraftsPage() {
   const { user } = useAuth()
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [loading, setLoading] = useState(true)
+  const { addToast } = useToast()
+  const [initialLoad, setInitialLoad] = useState(true)
 
   useEffect(() => {
     if (!user) return
@@ -33,14 +35,43 @@ export default function DraftsPage() {
       orderBy('slaDeadline', 'asc')
     )
     const unsub = onSnapshot(q, (snap) => {
-      setDrafts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Draft)))
+      const newDrafts = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Draft))
+      // Show toast for new drafts (skip initial load)
+      if (!initialLoad) {
+        for (const change of snap.docChanges()) {
+          if (change.type === 'added') {
+            const d = change.doc.data()
+            addToast(`New draft from ${d.customerCompany ?? d.customerEmail}`, 'info')
+          }
+        }
+      }
+      setDrafts(newDrafts)
       setLoading(false)
+      setInitialLoad(false)
     })
     return unsub
   }, [user])
 
   async function handleSend(id: string, response: string) {
     if (!user) return
+
+    // Track AI feedback — compare original vs edited response
+    const draft = drafts.find(d => d.id === id)
+    const original = draft?.agentResponse ?? ''
+    const wasEdited = response !== original
+
+    if (wasEdited) {
+      // Store feedback for AI quality tracking
+      addDoc(collection(db, 'manufacturers', user.uid, 'feedback'), {
+        conversationId: id,
+        originalResponse: original,
+        editedResponse: response,
+        editDistance: Math.abs(response.length - original.length),
+        wasEdited: true,
+        createdAt: serverTimestamp(),
+      }).catch(() => {})
+    }
+
     try {
       const idToken = await auth.currentUser!.getIdToken()
       const res = await fetch('/api/gmail/send', {
@@ -49,18 +80,18 @@ export default function DraftsPage() {
         body: JSON.stringify({ idToken, conversationId: id, editedResponse: response }),
       })
       if (!res.ok) {
-        // Gmail not connected — mark resolved without actually sending
         await updateDoc(doc(db, 'manufacturers', user.uid, 'conversations', id), {
           agentResponse: response,
+          draftEditedByManufacturer: wasEdited,
           status: 'resolved',
           isDraft: false,
           sentAt: new Date(),
         })
       }
     } catch {
-      // Fallback: mark resolved without sending
       await updateDoc(doc(db, 'manufacturers', user.uid, 'conversations', id), {
         agentResponse: response,
+        draftEditedByManufacturer: wasEdited,
         status: 'resolved',
         isDraft: false,
         sentAt: new Date(),

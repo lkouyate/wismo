@@ -1,14 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminAuth, adminDb } from '@/lib/firebase-admin'
 import { katanaRequest, getKatanaOrder } from '@/lib/katana'
-import { trackUPSShipment } from '@/lib/ups'
+import { trackShipment } from '@/lib/carriers'
 import { extractPONumber, generateWISMOResponse } from '@/lib/anthropic'
+import { ensureFreshQBOToken, getQBOInvoiceByPO } from '@/lib/quickbooks'
+import type { QBOInvoice } from '@/types'
 import { FieldValue } from 'firebase-admin/firestore'
+import { logError } from '@/lib/log-error'
+import { trackUsage } from '@/lib/track-usage'
+import { checkBillingAllowed, checkAndIncrementUsage } from '@/lib/billing'
+import { generateRequestId } from '@/lib/request-id'
+
+// Allow up to 60s for Claude + Katana + UPS pipeline
+export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
+  const requestId = generateRequestId()
   try {
-    const body = await request.json()
-    const { idToken, mode, customerEmail, customerCompany, customerMessage } = body
+    let body: Record<string, unknown> = {}
+    try { body = await request.json() } catch { /* empty or non-JSON body */ }
+    const { idToken, mode, customerEmail, customerCompany, customerMessage } = body as {
+      idToken?: string; mode?: string; customerEmail?: string; customerCompany?: string; customerMessage?: string
+    }
 
     if (!idToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -18,6 +31,14 @@ export async function POST(request: NextRequest) {
     const snap = await adminDb.collection('manufacturers').doc(uid).get()
     const mfg = snap.data()
     if (!mfg) return NextResponse.json({ error: 'Manufacturer not found' }, { status: 404 })
+
+    // Billing gate (skip for test/onboarding mode)
+    if (mode !== 'test') {
+      const gate = checkBillingAllowed(mfg)
+      if (!gate.allowed) {
+        return NextResponse.json({ error: gate.reason, code: 'billing_limit' }, { status: 402 })
+      }
+    }
 
     let emailBody = customerMessage
     let fromEmail = customerEmail ?? 'test@customer.com'
@@ -47,13 +68,26 @@ export async function POST(request: NextRequest) {
     // Extract PO number
     const poNumber = await extractPONumber(emailBody)
 
-    let orderData = null
+    // ── Parallel data lookups (Katana + QBO simultaneously) ──────────────
+    let orderData: unknown = null
     let trackingData = null
+    let qboData: QBOInvoice | null = null
 
-    if (poNumber && mfg.katanaApiKey) {
-      try {
-        orderData = await getKatanaOrder(mfg.katanaApiKey, poNumber)
-      } catch { /* ignore */ }
+    if (poNumber) {
+      const [katanaResult, qboResult] = await Promise.allSettled([
+        mfg.katanaApiKey
+          ? getKatanaOrder(mfg.katanaApiKey, poNumber)
+          : Promise.resolve(null),
+        mfg.qboConnected && mfg.qboRealmId
+          ? ensureFreshQBOToken(mfg as Record<string, unknown>, uid)
+              .then(({ accessToken: qboToken }) =>
+                getQBOInvoiceByPO(mfg.qboRealmId as string, qboToken, poNumber)
+              )
+          : Promise.resolve(null),
+      ])
+
+      orderData = katanaResult.status === 'fulfilled' ? katanaResult.value : null
+      qboData = qboResult.status === 'fulfilled' ? qboResult.value : null
     }
 
     // If test mode and no order found, grab first order
@@ -66,15 +100,29 @@ export async function POST(request: NextRequest) {
       orderData = ordersRes.data?.[0] ?? null
     }
 
+    // Cross-reference QBO data with Katana order
+    if (qboData && orderData) {
+      const order = orderData as Record<string, unknown>
+      const katanaStatus = String(order.status ?? '').toLowerCase()
+      if (katanaStatus.includes('ship') && qboData.status === 'not_invoiced') {
+        order.status = 'expected_ship'
+      }
+      if (!order.tracking_number && qboData.trackingNum) {
+        order.tracking_number = qboData.trackingNum
+      }
+    }
+
+    // Carrier tracking — depends on order data for tracking number
     if (orderData) {
       const order = orderData as Record<string, unknown>
       const trackingNum = order.tracking_number as string | undefined
       if (trackingNum) {
         try {
-          trackingData = await trackUPSShipment(trackingNum)
-        } catch { /* ignore */ }
+          trackingData = await trackShipment(trackingNum)
+        } catch { /* non-blocking */ }
       }
     }
+    // ────────────────────────────────────────────────────────────────────
 
     // Check escalation trigger phrases before generating response
     const escalationTriggers: string[] = mfg.agentSettings?.escalationTriggers ?? []
@@ -83,12 +131,20 @@ export async function POST(request: NextRequest) {
       lowerBody.includes(phrase.toLowerCase())
     )
 
+    // Track API usage
+    const usedServices: ('anthropic' | 'ups' | 'katana')[] = ['anthropic']
+    if (mfg.katanaApiKey) usedServices.push('katana')
+    if (trackingData) usedServices.push('ups')
+    // qboData tracked via dataSources in generateWISMOResponse
+    trackUsage(usedServices).catch(() => {})
+
     const { response, confidence, dataSources } = await generateWISMOResponse({
       customerEmail: fromEmail,
       customerCompany: fromCompany,
       customerMessage: emailBody,
       orderData: orderData as Record<string, unknown> | null,
       trackingData,
+      qboData,
       responseStyle: mfg.agentSettings?.responseStyle ?? 'professional',
     })
 
@@ -134,6 +190,9 @@ export async function POST(request: NextRequest) {
             createdAt: FieldValue.serverTimestamp(),
           })
       }
+
+      // Increment usage counters (atomic transaction)
+      checkAndIncrementUsage(uid).catch(() => {})
     }
 
     return NextResponse.json({
@@ -144,9 +203,11 @@ export async function POST(request: NextRequest) {
       orderData,
       trackingData,
       conversationId,
+      requestId,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    await logError(null, '/api/agent/run', err, { requestId })
+    return NextResponse.json({ error: msg, requestId }, { status: 500 })
   }
 }

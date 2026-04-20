@@ -1,6 +1,5 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -35,10 +34,23 @@ export default function LoginPage() {
           onboardingComplete: false,
           isLive: false,
           draftMode: true,
+          plan: 'free_trial',
+          trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          queriesThisMonth: 0,
+          queriesTotal: 0,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         })
       }
+
+      // Set server-side session cookie for middleware route protection
+      const idToken = await user.getIdToken()
+      await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      })
+
       router.replace('/dashboard')
     } catch (err) {
       console.error(err)
@@ -66,27 +78,8 @@ export default function LoginPage() {
         textAlign: 'center',
       }}>
         {/* Logo */}
-        <div style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 8,
-          marginBottom: 32,
-          fontSize: 20,
-          fontWeight: 700,
-          letterSpacing: '-0.5px',
-        }}>
-          <div style={{
-            width: 32,
-            height: 32,
-            background: 'var(--black)',
-            borderRadius: 8,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <span style={{ color: 'white', fontSize: 14, fontWeight: 800 }}>W</span>
-          </div>
-          WISMO
+        <div style={{ marginBottom: 32, display: 'flex', justifyContent: 'center' }}>
+          <img src="/wismo-logo.svg" alt="WISMO" style={{ height: 'clamp(36px, 5vw, 52px)', width: 'auto', maxWidth: '220px' }} />
         </div>
 
         <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: 8, color: 'var(--black)' }}>

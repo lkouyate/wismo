@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       gmailEmail: mfg.gmailEmail ?? 'NOT SET',
       gmailAccessToken: mfg.gmailAccessToken ? 'set' : 'NOT SET',
       gmailRefreshToken: mfg.gmailRefreshToken ? 'set' : 'NOT SET',
+      gmailHistoryId: mfg.gmailHistoryId ?? 'NOT SET',
       gmailWatchExpiry: watchExpiry?.toISOString() ?? 'NOT SET',
       gmailWatchExpiresInHours: watchExpiresIn,
       gmailWatchStatus:
@@ -84,7 +85,9 @@ export async function POST(request: NextRequest) {
     if (status.activeCustomerCount === 0) issues.push('No active customers — all emails will be escalated as unknown sender')
     if (status.envChecks.GMAIL_PUBSUB_TOPIC === 'NOT SET') issues.push('GMAIL_PUBSUB_TOPIC env var missing')
 
-    return NextResponse.json({ status, issues, ready: issues.length === 0 })
+    return NextResponse.json({ status, issues, ready: issues.length === 0 }, {
+      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' },
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: msg }, { status: 500 })

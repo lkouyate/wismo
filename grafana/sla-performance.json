@@ -1,0 +1,99 @@
+{
+  "dashboard": {
+    "title": "WISMO — SLA Performance",
+    "uid": "wismo-sla",
+    "tags": ["wismo", "sla"],
+    "timezone": "browser",
+    "refresh": "1m",
+    "time": { "from": "now-24h", "to": "now" },
+    "panels": [
+      {
+        "id": 1,
+        "title": "SLA Compliance Rate",
+        "type": "stat",
+        "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_responses_within_sla_total[1h])) / sum(rate(wismo_responses_total[1h])) * 100",
+            "legendFormat": "SLA %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "yellow", "value": 90 },
+                { "color": "green", "value": 95 }
+              ]
+            },
+            "unit": "percent"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Response Time P50 / P95 / P99",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 6, "y": 0 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(wismo_response_time_seconds_bucket[5m]))",
+            "legendFormat": "P50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(wismo_response_time_seconds_bucket[5m]))",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(wismo_response_time_seconds_bucket[5m]))",
+            "legendFormat": "P99"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "SLA Breaches (last 24h)",
+        "type": "stat",
+        "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(increase(wismo_sla_breaches_total[24h]))",
+            "legendFormat": "Breaches"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 5 },
+                { "color": "red", "value": 20 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Response Time by Confidence",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(wismo_response_time_seconds_bucket{confidence=\"high\"}[5m]))",
+            "legendFormat": "High confidence P95"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(wismo_response_time_seconds_bucket{confidence=\"medium\"}[5m]))",
+            "legendFormat": "Medium confidence P95"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(wismo_response_time_seconds_bucket{confidence=\"needs_attention\"}[5m]))",
+            "legendFormat": "Needs attention P95"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
     if (!apiKey) return NextResponse.json({ error: 'Katana not connected' }, { status: 400 })
 
     const order = await getKatanaOrder(apiKey, po)
-    return NextResponse.json({ order })
+    return NextResponse.json({ order }, {
+      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' },
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: msg }, { status: 500 })

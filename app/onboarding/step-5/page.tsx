@@ -1,6 +1,5 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -82,9 +81,14 @@ export default function Step5Page() {
                 WISMO will pull your most recent Katana order, check UPS tracking, and generate a sample response.
               </div>
             </div>
-            <button onClick={handleTest} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-              Run Test Query
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => router.push('/onboarding/step-4')} className="btn-secondary" style={{ justifyContent: 'center' }}>
+                ← Back
+              </button>
+              <button onClick={handleTest} className="btn-primary" style={{ flex: 1, justifyContent: 'center' }}>
+                Run Test Query
+              </button>
+            </div>
           </div>
         )}
 
@@ -154,9 +158,14 @@ export default function Step5Page() {
               </div>
             )}
 
-            <button onClick={handleContinue} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-              Looks good — Continue →
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => router.push('/onboarding/step-4')} className="btn-secondary" style={{ justifyContent: 'center' }}>
+                ← Back
+              </button>
+              <button onClick={handleContinue} className="btn-primary" style={{ flex: 1, justifyContent: 'center' }}>
+                Looks good — Continue →
+              </button>
+            </div>
           </div>
         )}
 
@@ -165,7 +174,10 @@ export default function Step5Page() {
             <div style={{ background: '#fee2e2', borderRadius: 9, padding: '0.75rem', marginBottom: 16 }}>
               <div style={{ color: '#991b1b', fontSize: '0.875rem' }}>✗ {errorMsg}</div>
             </div>
-            <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => router.push('/onboarding/step-4')} className="btn-secondary" style={{ justifyContent: 'center' }}>
+                ← Back
+              </button>
               <button onClick={handleTest} className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }}>
                 Retry
               </button>

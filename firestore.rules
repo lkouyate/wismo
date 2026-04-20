@@ -1,0 +1,132 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isWismoAdmin() {
+      return request.auth != null && request.auth.token.wismo_admin == true;
+    }
+
+    // Fields written exclusively by the Admin SDK (server-side API routes).
+    // Clients must never be able to supply or overwrite these on create.
+    function noGmailFields() {
+      return !request.resource.data.keys().hasAny([
+        'gmailAccessToken', 'gmailRefreshToken', 'gmailEmail',
+        'gmailWatchExpiry', 'gmailHistoryId'
+      ]);
+    }
+
+    // On update, the same fields must remain untouched by the client.
+    function gmailFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'gmailAccessToken', 'gmailRefreshToken', 'gmailEmail',
+        'gmailWatchExpiry', 'gmailHistoryId'
+      ]);
+    }
+
+    // Only these conversation fields may be patched by the client
+    // (draft edit, approve/send, discard).
+    function onlyConvFields() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly([
+          'agentResponse',
+          'status',
+          'isDraft',
+          'draftEditedByManufacturer',
+          'sentAt'
+        ]);
+    }
+
+    // Only these escalation fields may be patched by the client
+    // (resolve, assign, add internal note).
+    function onlyEscFields() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['status', 'assignedTo', 'internalNotes']);
+    }
+
+    // ── Manufacturer root document ────────────────────────────────────────────
+    // Created client-side on first login (setDoc in login/page.tsx).
+    // Updated client-side for onboarding steps, agent settings, draft mode toggle.
+    // Gmail tokens are always written by Admin SDK — block from client.
+    match /manufacturers/{uid} {
+      allow read:   if isOwner(uid) || isWismoAdmin();
+      allow create: if isOwner(uid) && noGmailFields();
+      allow update: if isOwner(uid) && gmailFieldsUnchanged();
+      allow delete: if false;
+
+      // ── Customers ──────────────────────────────────────────────────────────
+      // Full CRUD except delete — client manages the customer list.
+      match /customers/{customerId} {
+        allow read:          if isOwner(uid) || isWismoAdmin();
+        allow create, update: if isOwner(uid);
+        allow delete:        if false;
+      }
+
+      // ── Conversations ──────────────────────────────────────────────────────
+      // Created exclusively by the Admin SDK (webhook pipeline).
+      // Client may read and patch a limited set of fields (draft approval flow).
+      match /conversations/{conversationId} {
+        allow read:   if isOwner(uid) || isWismoAdmin();
+        allow create: if false;
+        allow update: if isOwner(uid) && onlyConvFields();
+        allow delete: if false;
+      }
+
+      // ── Escalations ───────────────────────────────────────────────────────
+      // Created by the Admin SDK (webhook) AND by the client (draft discard).
+      // Client may update status, assignee, and internal notes only.
+      match /escalations/{escalationId} {
+        allow read:   if isOwner(uid) || isWismoAdmin();
+        allow create: if isOwner(uid);
+        allow update: if isOwner(uid) && onlyEscFields();
+        allow delete: if false;
+      }
+
+      // ── Processed Messages ────────────────────────────────────────────────
+      // Written only by the Admin SDK for idempotency. Never accessible from
+      // the browser.
+      match /processedMessages/{messageId} {
+        allow read, write: if false;
+      }
+    }
+
+    // ── Platform config (announcements, feature flags) ────────────────────────
+    match /platformConfig/{docId} {
+      allow read:  if request.auth != null;
+      allow write: if isWismoAdmin();
+    }
+
+    // ── Error logs ────────────────────────────────────────────────────────────
+    match /errorLogs/{logId} {
+      allow read, write: if isWismoAdmin();
+    }
+
+    // ── Audit log ─────────────────────────────────────────────────────────────
+    match /auditLog/{logId} {
+      allow read: if isWismoAdmin();
+      allow write: if false; // Admin SDK only
+    }
+
+    // ── System stats (API usage) ───────────────────────────────────────────────
+    match /systemStats/{docId} {
+      allow read: if isWismoAdmin();
+      allow write: if false;
+    }
+
+    // ── System status (cron + webhook health) ─────────────────────────────────
+    match /systemStatus/{docId} {
+      allow read: if isWismoAdmin();
+      allow write: if false;
+    }
+
+    // ── Catch-all deny ────────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
