@@ -2,33 +2,31 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/components/providers/FirebaseProvider'
-import { collection, query, orderBy, getDocs, where, Timestamp } from 'firebase/firestore'
+import { collection, query, orderBy, getDocs, where } from 'firebase/firestore'
 import { db } from '@/lib/firebase-client'
 
 type Period = '7d' | '30d' | '90d'
 
-interface FeedbackEntry {
-  conversationId: string
-  originalResponse: string
-  editedResponse: string
-  editDistance: number
-  wasEdited: boolean
-  createdAt: Timestamp
+interface ApiStats {
+  total: number
+  positive: number
+  negative: number
+  edited: number
+  unrated: number
+  acceptRate: number
+  reasonCounts: Record<string, number>
+  recentNegative: { original: string; edited: string; reasons: string[] }[]
 }
 
 export default function QualityPage() {
   const { user } = useAuth()
   const [period, setPeriod] = useState<Period>('30d')
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({
-    totalSent: 0,
-    acceptedAsIs: 0,
-    edited: 0,
-    acceptRate: 0,
-    avgEditDistance: 0,
-    confidenceAccuracy: { high: 0, medium: 0, needs_attention: 0 },
-    editTrend: [] as { date: string; rate: number }[],
+  const [stats, setStats] = useState<ApiStats>({
+    total: 0, positive: 0, negative: 0, edited: 0, unrated: 0,
+    acceptRate: 100, reasonCounts: {}, recentNegative: [],
   })
+  const [confCounts, setConfCounts] = useState({ high: 0, medium: 0, needs_attention: 0 })
 
   useEffect(() => {
     if (!user) return
@@ -39,56 +37,43 @@ export default function QualityPage() {
     if (!user) return
     setLoading(true)
 
-    const days = period === '7d' ? 7 : period === '30d' ? 30 : 90
-    const since = new Date(Date.now() - days * 86400000)
-
     try {
-      // Load feedback entries
-      const feedbackRef = collection(db, 'manufacturers', user.uid, 'feedback')
-      const fbQuery = query(feedbackRef, where('createdAt', '>=', since), orderBy('createdAt', 'desc'))
-      const fbSnap = await getDocs(fbQuery)
-      const feedback = fbSnap.docs.map(d => d.data() as FeedbackEntry)
+      const { currentUser } = await import('@/lib/firebase-client').then(m => ({ currentUser: m.auth.currentUser }))
+      const idToken = await currentUser?.getIdToken()
+      if (!idToken) return
 
-      // Load conversations for confidence accuracy
+      // Fetch aggregated feedback from API
+      const res = await fetch(`/api/feedback?period=${period}`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+      if (res.ok) {
+        setStats(await res.json())
+      }
+
+      // Load confidence distribution from conversations (client-side — lightweight)
+      const days = period === '7d' ? 7 : period === '90d' ? 90 : 30
+      const since = new Date(Date.now() - days * 86400000)
       const convRef = collection(db, 'manufacturers', user.uid, 'conversations')
       const convQuery = query(convRef, where('createdAt', '>=', since), where('status', '==', 'resolved'), orderBy('createdAt', 'desc'))
       const convSnap = await getDocs(convQuery)
-      const conversations = convSnap.docs.map(d => d.data() as { confidence: string; status: string; createdAt: Timestamp })
-
-      const totalSent = conversations.length + feedback.length
-      const edited = feedback.filter(f => f.wasEdited).length
-      const acceptedAsIs = totalSent - edited
-      const acceptRate = totalSent > 0 ? Math.round((acceptedAsIs / totalSent) * 100) : 0
-      const avgEditDistance = edited > 0
-        ? Math.round(feedback.filter(f => f.wasEdited).reduce((s, f) => s + f.editDistance, 0) / edited)
-        : 0
-
-      // Confidence distribution
-      const confCounts = { high: 0, medium: 0, needs_attention: 0 }
-      for (const c of conversations) {
-        const k = c.confidence as keyof typeof confCounts
-        if (k in confCounts) confCounts[k]++
+      const counts = { high: 0, medium: 0, needs_attention: 0 }
+      for (const d of convSnap.docs) {
+        const k = d.data().confidence as keyof typeof counts
+        if (k in counts) counts[k]++
       }
-
-      // Edit rate trend (daily)
-      const dailyMap = new Map<string, { total: number; edited: number }>()
-      for (const f of feedback) {
-        const date = f.createdAt?.toDate?.()
-        if (!date) continue
-        const key = date.toISOString().slice(0, 10)
-        const b = dailyMap.get(key) ?? { total: 0, edited: 0 }
-        b.total++
-        if (f.wasEdited) b.edited++
-        dailyMap.set(key, b)
-      }
-      const editTrend = Array.from(dailyMap.entries())
-        .map(([date, b]) => ({ date, rate: b.total > 0 ? Math.round((b.edited / b.total) * 100) : 0 }))
-        .sort((a, b) => a.date.localeCompare(b.date))
-
-      setStats({ totalSent, acceptedAsIs, edited, acceptRate, avgEditDistance, confidenceAccuracy: confCounts, editTrend })
+      setConfCounts(counts)
     } catch { /* ignore */ }
 
     setLoading(false)
+  }
+
+  const REASON_LABELS: Record<string, string> = {
+    tone: 'Wrong tone',
+    accuracy: 'Inaccurate info',
+    missing_info: 'Missing details',
+    too_long: 'Too long',
+    too_short: 'Too short',
+    other: 'Other',
   }
 
   return (
@@ -120,10 +105,10 @@ export default function QualityPage() {
       {/* Summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
         {[
-          { label: 'Accept-as-is rate', value: loading ? '—' : `${stats.acceptRate}%`, color: stats.acceptRate >= 80 ? '#16a34a' : stats.acceptRate >= 60 ? '#ca8a04' : '#dc2626' },
-          { label: 'Total sent', value: loading ? '—' : stats.totalSent, color: undefined },
-          { label: 'Edited before send', value: loading ? '—' : stats.edited, color: undefined },
-          { label: 'Avg edit distance', value: loading ? '—' : `${stats.avgEditDistance} chars`, color: undefined },
+          { label: 'Accept rate', value: loading ? '\u2014' : `${stats.acceptRate}%`, color: stats.acceptRate >= 80 ? '#16a34a' : stats.acceptRate >= 60 ? '#ca8a04' : '#dc2626' },
+          { label: 'Total responses', value: loading ? '\u2014' : stats.total, color: undefined },
+          { label: 'Positive ratings', value: loading ? '\u2014' : stats.positive, color: '#16a34a' },
+          { label: 'Needs work', value: loading ? '\u2014' : stats.negative, color: stats.negative > 0 ? '#dc2626' : undefined },
         ].map(m => (
           <div key={m.label} className="card">
             <div style={{ fontSize: '2rem', fontWeight: 700, marginBottom: 4, color: m.color }}>{m.value}</div>
@@ -131,6 +116,32 @@ export default function QualityPage() {
           </div>
         ))}
       </div>
+
+      {/* Feedback reasons breakdown */}
+      {Object.keys(stats.reasonCounts).length > 0 && (
+        <div className="card" style={{ marginBottom: 24 }}>
+          <div style={{ fontWeight: 600, marginBottom: 16 }}>Top feedback reasons</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {Object.entries(stats.reasonCounts)
+              .sort(([, a], [, b]) => b - a)
+              .map(([reason, count]) => {
+                const maxCount = Math.max(...Object.values(stats.reasonCounts))
+                const pct = maxCount > 0 ? (count / maxCount) * 100 : 0
+                return (
+                  <div key={reason}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: 4 }}>
+                      <span style={{ color: 'var(--gray-600)' }}>{REASON_LABELS[reason] ?? reason}</span>
+                      <span style={{ color: 'var(--gray-400)' }}>{count}</span>
+                    </div>
+                    <div style={{ height: 6, background: 'var(--gray-100)', borderRadius: 3 }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: '#6366f1', borderRadius: 3 }} />
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+        </div>
+      )}
 
       {/* Confidence distribution */}
       <div className="card" style={{ marginBottom: 24 }}>
@@ -140,11 +151,11 @@ export default function QualityPage() {
         ) : (
           <div style={{ display: 'flex', gap: 16 }}>
             {[
-              { label: 'High', count: stats.confidenceAccuracy.high, color: '#16a34a', bg: '#f0fdf4' },
-              { label: 'Medium', count: stats.confidenceAccuracy.medium, color: '#ca8a04', bg: '#fefce8' },
-              { label: 'Needs attention', count: stats.confidenceAccuracy.needs_attention, color: '#dc2626', bg: '#fef2f2' },
+              { label: 'High', count: confCounts.high, color: '#16a34a', bg: '#f0fdf4' },
+              { label: 'Medium', count: confCounts.medium, color: '#ca8a04', bg: '#fefce8' },
+              { label: 'Needs attention', count: confCounts.needs_attention, color: '#dc2626', bg: '#fef2f2' },
             ].map(c => {
-              const total = stats.confidenceAccuracy.high + stats.confidenceAccuracy.medium + stats.confidenceAccuracy.needs_attention
+              const total = confCounts.high + confCounts.medium + confCounts.needs_attention
               const pct = total > 0 ? Math.round((c.count / total) * 100) : 0
               return (
                 <div key={c.label} style={{ flex: 1, background: c.bg, borderRadius: 10, padding: 16, textAlign: 'center' }}>
@@ -158,35 +169,37 @@ export default function QualityPage() {
         )}
       </div>
 
-      {/* Edit rate trend */}
-      <div className="card">
-        <div style={{ fontWeight: 600, marginBottom: 16 }}>Edit rate over time</div>
-        {loading ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray-400)' }}>Loading...</div>
-        ) : stats.editTrend.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray-400)', fontSize: '0.875rem' }}>
-            No feedback data yet. Edit rates will appear as drafts are sent.
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 140 }}>
-            {stats.editTrend.map(d => (
-              <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                <div style={{ fontSize: '0.6rem', color: 'var(--gray-400)' }}>{d.rate}%</div>
-                <div style={{
-                  width: '100%', maxWidth: 32,
-                  height: `${Math.max(d.rate, 4)}px`,
-                  background: d.rate > 40 ? '#fee2e2' : d.rate > 20 ? '#fef9c3' : '#dcfce7',
-                  borderRadius: '4px 4px 0 0',
-                  border: `1px solid ${d.rate > 40 ? '#fca5a5' : d.rate > 20 ? '#fcd34d' : '#86efac'}`,
-                }} />
-                <div style={{ fontSize: '0.55rem', color: 'var(--gray-400)', transform: 'rotate(-45deg)', whiteSpace: 'nowrap' }}>
-                  {d.date.slice(5)}
+      {/* Recent corrections */}
+      {stats.recentNegative.length > 0 && (
+        <div className="card" style={{ marginBottom: 24 }}>
+          <div style={{ fontWeight: 600, marginBottom: 16 }}>Recent corrections</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {stats.recentNegative.map((ex, i) => (
+              <div key={i} style={{ background: 'var(--gray-50)', borderRadius: 8, padding: 12 }}>
+                {ex.reasons.length > 0 && (
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                    {ex.reasons.map(r => (
+                      <span key={r} style={{
+                        padding: '0.15rem 0.5rem', borderRadius: 9999,
+                        background: '#eef2ff', color: '#4338ca',
+                        fontSize: '0.65rem', fontWeight: 500,
+                      }}>
+                        {REASON_LABELS[r] ?? r}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ fontSize: '0.75rem', color: '#dc2626', marginBottom: 4 }}>
+                  <strong>AI wrote:</strong> {ex.original}...
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#16a34a' }}>
+                  <strong>Corrected to:</strong> {ex.edited}...
                 </div>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

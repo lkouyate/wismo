@@ -1,8 +1,16 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { formatDistanceToNow } from 'date-fns'
 import { Timestamp } from 'firebase/firestore'
+
+const FEEDBACK_REASONS = [
+  { key: 'tone', label: 'Wrong tone' },
+  { key: 'accuracy', label: 'Inaccurate info' },
+  { key: 'missing_info', label: 'Missing details' },
+  { key: 'too_long', label: 'Too long' },
+  { key: 'too_short', label: 'Too short' },
+  { key: 'other', label: 'Other' },
+] as const
 
 interface DraftCardProps {
   id: string
@@ -13,7 +21,7 @@ interface DraftCardProps {
   confidence: 'high' | 'medium' | 'needs_attention'
   dataSources: string[]
   slaDeadline: Timestamp
-  onSend: (id: string, response: string) => Promise<void>
+  onSend: (id: string, response: string, feedback?: { rating: string; reasons: string[] }) => Promise<void>
   onDiscard: (id: string) => Promise<void>
 }
 
@@ -33,6 +41,9 @@ export function DraftCard({
   const [expanded, setExpanded] = useState(false)
   const [sending, setSending] = useState(false)
   const [now, setNow] = useState(() => new Date())
+  const [rating, setRating] = useState<'positive' | 'negative' | null>(null)
+  const [selectedReasons, setSelectedReasons] = useState<string[]>([])
+  const [showReasons, setShowReasons] = useState(false)
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000)
@@ -50,9 +61,26 @@ export function DraftCard({
     needs_attention: { bg: '#fee2e2', color: '#991b1b' },
   }[confidence]
 
+  function handleRating(r: 'positive' | 'negative') {
+    setRating(r)
+    if (r === 'negative') {
+      setShowReasons(true)
+    } else {
+      setShowReasons(false)
+      setSelectedReasons([])
+    }
+  }
+
+  function toggleReason(key: string) {
+    setSelectedReasons(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    )
+  }
+
   async function handleSend() {
     setSending(true)
-    await onSend(id, response)
+    const feedback = rating ? { rating, reasons: selectedReasons } : undefined
+    await onSend(id, response, feedback)
   }
 
   return (
@@ -82,7 +110,7 @@ export function DraftCard({
               color: slaAlert ? '#991b1b' : slaWarning ? '#92400e' : 'var(--gray-400)',
               fontWeight: slaWarning ? 600 : 400,
             }}>
-              {slaAlert ? '⚠ ' : ''}{minsLeft}m left
+              {slaAlert ? '\u26a0 ' : ''}{minsLeft}m left
             </span>
           )}
         </div>
@@ -104,7 +132,7 @@ export function DraftCard({
         }}
       >
         <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray-400)', marginBottom: 4 }}>
-          CUSTOMER MESSAGE {expanded ? '▲' : '▼'}
+          CUSTOMER MESSAGE {expanded ? '\u25b2' : '\u25bc'}
         </div>
         {customerMessage}
       </div>
@@ -132,6 +160,77 @@ export function DraftCard({
         />
       </div>
 
+      {/* Feedback: thumbs up/down */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray-400)', marginBottom: 6 }}>
+          RATE THIS RESPONSE
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => handleRating('positive')}
+            style={{
+              padding: '0.4rem 0.75rem',
+              borderRadius: 8,
+              border: `1px solid ${rating === 'positive' ? '#16a34a' : 'var(--gray-200)'}`,
+              background: rating === 'positive' ? '#f0fdf4' : 'var(--white)',
+              color: rating === 'positive' ? '#16a34a' : 'var(--gray-500)',
+              cursor: 'pointer',
+              fontSize: '0.8rem',
+              fontWeight: rating === 'positive' ? 600 : 400,
+            }}
+          >
+            Good
+          </button>
+          <button
+            onClick={() => handleRating('negative')}
+            style={{
+              padding: '0.4rem 0.75rem',
+              borderRadius: 8,
+              border: `1px solid ${rating === 'negative' ? '#dc2626' : 'var(--gray-200)'}`,
+              background: rating === 'negative' ? '#fef2f2' : 'var(--white)',
+              color: rating === 'negative' ? '#dc2626' : 'var(--gray-500)',
+              cursor: 'pointer',
+              fontSize: '0.8rem',
+              fontWeight: rating === 'negative' ? 600 : 400,
+            }}
+          >
+            Needs work
+          </button>
+          {rating && (
+            <span style={{ fontSize: '0.7rem', color: 'var(--gray-400)', marginLeft: 4 }}>
+              {rating === 'positive' ? 'Thanks for the feedback!' : 'Select reasons below'}
+            </span>
+          )}
+        </div>
+
+        {/* Reason chips (shown on negative) */}
+        {showReasons && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+            {FEEDBACK_REASONS.map(r => {
+              const active = selectedReasons.includes(r.key)
+              return (
+                <button
+                  key={r.key}
+                  onClick={() => toggleReason(r.key)}
+                  style={{
+                    padding: '0.3rem 0.625rem',
+                    borderRadius: 9999,
+                    border: `1px solid ${active ? '#6366f1' : 'var(--gray-200)'}`,
+                    background: active ? '#eef2ff' : 'var(--white)',
+                    color: active ? '#4338ca' : 'var(--gray-500)',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    fontWeight: active ? 500 : 400,
+                  }}
+                >
+                  {r.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Actions */}
       <div style={{ display: 'flex', gap: 8 }}>
         <button
@@ -140,7 +239,7 @@ export function DraftCard({
           className="btn-primary"
           style={{ flex: 1, justifyContent: 'center' }}
         >
-          {sending ? 'Sending...' : '✓ Send'}
+          {sending ? 'Sending...' : 'Send'}
         </button>
         <button
           onClick={() => onDiscard(id)}

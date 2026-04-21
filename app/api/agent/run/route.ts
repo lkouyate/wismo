@@ -10,12 +10,15 @@ import { logError } from '@/lib/log-error'
 import { trackUsage } from '@/lib/track-usage'
 import { checkBillingAllowed, checkAndIncrementUsage } from '@/lib/billing'
 import { generateRequestId } from '@/lib/request-id'
+import { withSpan, recordApiMetrics, pipelineQueries, escalationsCreated, billingBlocks } from '@/lib/telemetry'
+import { getFeedbackContext } from '@/lib/feedback'
 
 // Allow up to 60s for Claude + Katana + UPS pipeline
 export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
   const requestId = generateRequestId()
+  const startTime = Date.now()
   try {
     let body: Record<string, unknown> = {}
     try { body = await request.json() } catch { /* empty or non-JSON body */ }
@@ -36,6 +39,8 @@ export async function POST(request: NextRequest) {
     if (mode !== 'test') {
       const gate = checkBillingAllowed(mfg)
       if (!gate.allowed) {
+        billingBlocks.add(1, { route: '/api/agent/run' })
+        recordApiMetrics('/api/agent/run', 402, startTime)
         return NextResponse.json({ error: gate.reason, code: 'billing_limit' }, { status: 402 })
       }
     }
@@ -138,7 +143,12 @@ export async function POST(request: NextRequest) {
     // qboData tracked via dataSources in generateWISMOResponse
     trackUsage(usedServices).catch(() => {})
 
-    const { response, confidence, dataSources } = await generateWISMOResponse({
+    // Load manufacturer feedback to steer AI (non-blocking — empty string on failure)
+    const feedbackContext = mode !== 'test'
+      ? await getFeedbackContext(uid).catch(() => '')
+      : ''
+
+    const { response, confidence, dataSources } = await withSpan('generate-wismo-response', () => generateWISMOResponse({
       customerEmail: fromEmail,
       customerCompany: fromCompany,
       customerMessage: emailBody,
@@ -146,7 +156,8 @@ export async function POST(request: NextRequest) {
       trackingData,
       qboData,
       responseStyle: mfg.agentSettings?.responseStyle ?? 'professional',
-    })
+      feedbackContext,
+    }), { 'pipeline.mode': mode ?? 'live' })
 
     // Save as draft conversation if not test mode
     let conversationId: string | undefined
@@ -175,6 +186,8 @@ export async function POST(request: NextRequest) {
         })
       conversationId = convRef.id
 
+      pipelineQueries.add(1, { confidence, mode: mode ?? 'live' })
+
       if (isEscalated) {
         await adminDb
           .collection('manufacturers')
@@ -189,12 +202,14 @@ export async function POST(request: NextRequest) {
             internalNotes: [],
             createdAt: FieldValue.serverTimestamp(),
           })
+        escalationsCreated.add(1)
       }
 
       // Increment usage counters (atomic transaction)
       checkAndIncrementUsage(uid).catch(() => {})
     }
 
+    recordApiMetrics('/api/agent/run', 200, startTime)
     return NextResponse.json({
       response,
       confidence,
@@ -208,6 +223,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error'
     await logError(null, '/api/agent/run', err, { requestId })
+    recordApiMetrics('/api/agent/run', 500, startTime)
     return NextResponse.json({ error: msg, requestId }, { status: 500 })
   }
 }

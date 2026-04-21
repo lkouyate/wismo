@@ -8,6 +8,7 @@ import { trackUPSShipment } from '@/lib/ups'
 import { trackFedEx } from './fedex'
 import { trackUSPS } from './usps'
 import { trackDHL } from './dhl'
+import { carrierLookups } from '@/lib/telemetry'
 
 export interface TrackingResult {
   trackingNumber: string
@@ -30,6 +31,7 @@ export interface TrackingEvent {
  */
 export async function trackShipment(trackingNumber: string): Promise<TrackingResult | null> {
   const carrier = detectCarrier(trackingNumber)
+  carrierLookups.add(1, { carrier })
 
   switch (carrier) {
     case 'ups': {

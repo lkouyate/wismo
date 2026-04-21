@@ -1,0 +1,95 @@
+{
+  "dashboard": {
+    "title": "WISMO — Business Metrics",
+    "uid": "wismo-business",
+    "tags": ["wismo", "business"],
+    "timezone": "browser",
+    "refresh": "1m",
+    "panels": [
+      {
+        "title": "Queries Per Day",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(increase(wismo_pipeline_queries_total[24h]))",
+            "legendFormat": "Total queries"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "short" } }
+      },
+      {
+        "title": "Queries by Confidence",
+        "type": "piechart",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(increase(wismo_pipeline_queries_total[24h])) by (confidence)",
+            "legendFormat": "{{ confidence }}"
+          }
+        ]
+      },
+      {
+        "title": "Escalation Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_escalations_created_total[1h])) / sum(rate(wismo_pipeline_queries_total[1h])) * 100",
+            "legendFormat": "Escalation %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 10 },
+                { "color": "red", "value": 25 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Escalations Per Day",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(increase(wismo_escalations_created_total[24h]))",
+            "legendFormat": "Escalations"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "short" } }
+      },
+      {
+        "title": "Carrier Lookups by Carrier",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_carrier_lookups_total[5m])) by (carrier)",
+            "legendFormat": "{{ carrier }}"
+          }
+        ]
+      },
+      {
+        "title": "Claude API Cost Proxy (calls/min)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_claude_latency_ms_count{model=\"haiku\"}[5m]))",
+            "legendFormat": "Haiku calls/s"
+          },
+          {
+            "expr": "sum(rate(wismo_claude_latency_ms_count{model=\"opus\"}[5m]))",
+            "legendFormat": "Opus calls/s"
+          }
+        ]
+      }
+    ]
+  }
+}

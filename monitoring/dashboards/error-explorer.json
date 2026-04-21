@@ -1,0 +1,93 @@
+{
+  "dashboard": {
+    "title": "WISMO — Error Explorer",
+    "uid": "wismo-errors",
+    "tags": ["wismo", "errors"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "panels": [
+      {
+        "title": "Errors by Route (5m rate)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_api_errors_total[5m])) by (route, status)",
+            "legendFormat": "{{ route }} ({{ status }})"
+          }
+        ]
+      },
+      {
+        "title": "Total Errors (24h)",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 8, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(increase(wismo_api_errors_total[24h]))",
+            "legendFormat": "Errors"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 10 },
+                { "color": "red", "value": 50 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Error Rate % (1h)",
+        "type": "gauge",
+        "gridPos": { "h": 4, "w": 8, "x": 8, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_api_errors_total[1h])) / sum(rate(wismo_api_requests_total[1h])) * 100",
+            "legendFormat": "Error %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 1 },
+                { "color": "red", "value": 5 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Billing Blocks (24h)",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 8, "x": 16, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(increase(wismo_billing_blocks_total[24h]))",
+            "legendFormat": "Blocks"
+          }
+        ]
+      },
+      {
+        "title": "Recent Error Traces",
+        "description": "Link to Tempo/Jaeger trace search filtered by error status",
+        "type": "logs",
+        "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
+        "targets": [
+          {
+            "datasource": { "type": "tempo" },
+            "queryType": "traceql",
+            "query": "{ resource.service.name=\"wismo-dashboard\" && status=error } | limit=20"
+          }
+        ]
+      }
+    ]
+  }
+}

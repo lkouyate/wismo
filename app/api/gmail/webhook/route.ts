@@ -8,6 +8,7 @@ import { checkBillingAllowed } from '@/lib/billing'
 import { generateRequestId } from '@/lib/request-id'
 import { decryptToken, isEncrypted } from '@/lib/crypto'
 import { enqueueEmailJobs, triggerWorker } from '@/lib/queue'
+import { withSpan, recordApiMetrics, webhookEnqueued } from '@/lib/telemetry'
 
 function safeDecrypt(value: string): string {
   return isEncrypted(value) ? decryptToken(value) : value
@@ -47,6 +48,7 @@ interface PubSubMessage {
 
 export async function POST(request: NextRequest) {
   const requestId = generateRequestId()
+  const startTime = Date.now()
   try {
     // Verify auth
     const authHeader = request.headers.get('authorization')
@@ -140,13 +142,16 @@ export async function POST(request: NextRequest) {
     // Enqueue jobs + trigger worker
     const enqueued = await enqueueEmailJobs(jobsToEnqueue)
     if (enqueued > 0) {
+      webhookEnqueued.add(enqueued)
       triggerWorker()
     }
 
+    recordApiMetrics('/api/gmail/webhook', 200, startTime)
     return NextResponse.json({ ok: true, enqueued, requestId })
   } catch (err) {
     console.error(`Webhook error [${requestId}]:`, err)
     await logError(null, '/api/gmail/webhook', err, { requestId })
+    recordApiMetrics('/api/gmail/webhook', 500, startTime)
     return NextResponse.json({ error: 'Internal error', requestId }, { status: 500 })
   }
 }

@@ -52,25 +52,29 @@ export default function DraftsPage() {
     return unsub
   }, [user])
 
-  async function handleSend(id: string, response: string) {
+  async function handleSend(id: string, response: string, feedback?: { rating: string; reasons: string[] }) {
     if (!user) return
 
-    // Track AI feedback — compare original vs edited response
     const draft = drafts.find(d => d.id === id)
     const original = draft?.agentResponse ?? ''
     const wasEdited = response !== original
 
-    if (wasEdited) {
-      // Store feedback for AI quality tracking
-      addDoc(collection(db, 'manufacturers', user.uid, 'feedback'), {
-        conversationId: id,
-        originalResponse: original,
-        editedResponse: response,
-        editDistance: Math.abs(response.length - original.length),
-        wasEdited: true,
-        createdAt: serverTimestamp(),
-      }).catch(() => {})
-    }
+    // Submit structured feedback via API
+    try {
+      const idToken = await auth.currentUser!.getIdToken()
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idToken,
+          conversationId: id,
+          rating: feedback?.rating ?? (wasEdited ? 'negative' : 'positive'),
+          reasons: feedback?.reasons ?? [],
+          originalResponse: original,
+          editedResponse: wasEdited ? response : undefined,
+        }),
+      })
+    } catch { /* non-blocking */ }
 
     try {
       const idToken = await auth.currentUser!.getIdToken()

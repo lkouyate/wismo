@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { UPSTrackingResult, QBOInvoice } from '@/types'
+import { claudeLatency } from '@/lib/telemetry'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -11,6 +12,7 @@ function isRateLimit(err: unknown): boolean {
 }
 
 export async function extractPONumber(emailBody: string): Promise<string | null> {
+  const t0 = Date.now()
   const msg = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 64,
@@ -21,6 +23,7 @@ export async function extractPONumber(emailBody: string): Promise<string | null>
       },
     ],
   })
+  claudeLatency.record(Date.now() - t0, { operation: 'extractPONumber', model: 'haiku' })
   const text = msg.content[0].type === 'text' ? msg.content[0].text.trim() : null
   return text === 'null' || !text ? null : text
 }
@@ -34,6 +37,7 @@ interface GenerateResponseOptions {
   qboData?: QBOInvoice | null
   responseStyle?: 'professional' | 'friendly' | 'concise'
   customSignature?: string
+  feedbackContext?: string
 }
 
 export async function generateWISMOResponse(opts: GenerateResponseOptions): Promise<{
@@ -77,12 +81,13 @@ Rules:
 - ${opts.customSignature ? `Sign off as: ${opts.customSignature}` : 'Sign off as "Customer Support Team"'}
 
 AVAILABLE CONTEXT:${contextBlock || '\n(No order or tracking data found for this inquiry)'}
-`
+${opts.feedbackContext ?? ''}`
 
   let msg
+  const t0 = Date.now()
   try {
     msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-opus-4-6',
       max_tokens: 512,
       system: systemPrompt,
       messages: [
@@ -104,6 +109,7 @@ AVAILABLE CONTEXT:${contextBlock || '\n(No order or tracking data found for this
     }
     throw err
   }
+  claudeLatency.record(Date.now() - t0, { operation: 'generateWISMOResponse', model: 'opus' })
 
   const response = msg.content[0].type === 'text' ? msg.content[0].text : ''
 

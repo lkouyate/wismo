@@ -1,0 +1,97 @@
+{
+  "dashboard": {
+    "title": "WISMO — Pipeline Health",
+    "uid": "wismo-pipeline",
+    "tags": ["wismo", "pipeline"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "panels": [
+      {
+        "title": "Request Rate by Route",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_api_requests_total[5m])) by (route)",
+            "legendFormat": "{{ route }}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "reqps" } }
+      },
+      {
+        "title": "Error Rate by Route",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_api_errors_total[5m])) by (route) / sum(rate(wismo_api_requests_total[5m])) by (route) * 100",
+            "legendFormat": "{{ route }}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 1 },
+                { "color": "red", "value": 5 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Service Availability (5m window)",
+        "type": "stat",
+        "gridPos": { "h": 6, "w": 24, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "(1 - sum(rate(wismo_api_errors_total{route=\"/api/agent/run\"}[5m])) / sum(rate(wismo_api_requests_total{route=\"/api/agent/run\"}[5m]))) * 100",
+            "legendFormat": "Agent Pipeline"
+          },
+          {
+            "expr": "(1 - sum(rate(wismo_api_errors_total{route=\"/api/gmail/webhook\"}[5m])) / sum(rate(wismo_api_requests_total{route=\"/api/gmail/webhook\"}[5m]))) * 100",
+            "legendFormat": "Webhook"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "yellow", "value": 95 },
+                { "color": "green", "value": 99 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Billing Blocks",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 12, "x": 0, "y": 14 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_billing_blocks_total[5m]))",
+            "legendFormat": "Billing blocks/s"
+          }
+        ]
+      },
+      {
+        "title": "Webhook Jobs Enqueued",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 12, "x": 12, "y": 14 },
+        "targets": [
+          {
+            "expr": "sum(rate(wismo_webhook_enqueued_total[5m]))",
+            "legendFormat": "Enqueued/s"
+          }
+        ]
+      }
+    ]
+  }
+}
