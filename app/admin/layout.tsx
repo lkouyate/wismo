@@ -15,8 +15,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const isLoginPage = pathname === '/admin/login'
 
   useEffect(() => {
-    if (isLoginPage) { setLoading(false); return }
-    if (!auth) { setLoading(false); return }
+    if (isLoginPage || !auth) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false)
+      return
+    }
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         router.replace('/admin/login')

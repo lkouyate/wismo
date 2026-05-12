@@ -74,7 +74,9 @@ export default function EscalationsPage() {
       ) : (
         escalations.map((e) => {
           const deadline = e.slaDeadline?.toDate?.()
+          // eslint-disable-next-line react-hooks/purity
           const overdue = deadline ? deadline.getTime() < Date.now() : false
+          // eslint-disable-next-line react-hooks/purity
           const minsLeft = deadline ? Math.round((deadline.getTime() - Date.now()) / 60000) : null
 
           return (

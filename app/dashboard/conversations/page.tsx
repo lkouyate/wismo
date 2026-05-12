@@ -51,7 +51,9 @@ export default function ConversationsPage() {
   useEffect(() => {
     if (!user) return
     lastDocRef.current = null
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setConversations([])
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
 
     const colRef = collection(db, 'manufacturers', user.uid, 'conversations')

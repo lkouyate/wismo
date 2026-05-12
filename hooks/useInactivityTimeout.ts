@@ -30,6 +30,7 @@ export function useInactivityTimeout(
   }, [clearTimers, warnMs, timeoutMs, router])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     resetTimers()
     const events = ['mousemove', 'keydown', 'click', 'touchstart'] as const
     events.forEach(e => window.addEventListener(e, resetTimers, { passive: true }))

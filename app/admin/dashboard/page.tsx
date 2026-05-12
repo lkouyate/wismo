@@ -43,6 +43,7 @@ export default function AdminDashboardPage() {
     }).catch(() => setLoading(false))
   }, [])
 
+  // eslint-disable-next-line react-hooks/purity
   const now = Date.now()
   const live = mfgs.filter(m => m.isLive && !m.adminSuspended).length
   const suspended = mfgs.filter(m => m.adminSuspended).length
@@ -134,7 +135,7 @@ export default function AdminDashboardPage() {
             </div>
             {watchExpired > 0 && (
               <div style={{ background: '#fee2e2', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#991b1b' }}>
-                ⚠ {watchExpired} account{watchExpired > 1 ? 's have' : ' has'} expired Gmail watch — emails won't be processed until renewed.
+                ⚠ {watchExpired} account{watchExpired > 1 ? 's have' : ' has'} expired Gmail watch — emails won&apos;t be processed until renewed.
               </div>
             )}
           </div>

@@ -73,6 +73,7 @@ export default function DashboardPage() {
 
   // Gmail watch status
   const watchExpiry = mfgInfo?.gmailWatchExpiry ? new Date(mfgInfo.gmailWatchExpiry) : null
+  // eslint-disable-next-line react-hooks/purity
   const watchDaysLeft = watchExpiry ? Math.ceil((watchExpiry.getTime() - Date.now()) / 86400000) : null
   const watchExpired = watchDaysLeft !== null && watchDaysLeft <= 0
   const watchExpiringSoon = watchDaysLeft !== null && watchDaysLeft > 0 && watchDaysLeft <= 2

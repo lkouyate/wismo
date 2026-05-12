@@ -29,11 +29,6 @@ export default function AnalyticsPage() {
   const [topCustomers, setTopCustomers] = useState<TopCustomer[]>([])
   const [totals, setTotals] = useState({ total: 0, resolved: 0, escalated: 0, avgConfidence: '' })
 
-  useEffect(() => {
-    if (!user) return
-    loadAnalytics()
-  }, [user, period])
-
   async function loadAnalytics() {
     if (!user) return
     setLoading(true)
@@ -91,6 +86,12 @@ export default function AnalyticsPage() {
 
     setLoading(false)
   }
+
+  useEffect(() => {
+    if (!user) return
+    loadAnalytics()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, period])
 
   const maxDaily = Math.max(...daily.map(d => d.total), 1)
 

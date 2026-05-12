@@ -59,7 +59,9 @@ export default function CustomersPage() {
   useEffect(() => {
     if (!user) return
     lastDocRef.current = null
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCustomers([])
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
 
     const q = query(

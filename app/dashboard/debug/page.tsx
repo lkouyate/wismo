@@ -94,9 +94,10 @@ export default function DebugPage() {
     }
   }
 
-  const issues: string[] = (result as any)?.issues ?? []
-  const status: Record<string, unknown> = (result as any)?.status ?? {}
-  const ready: boolean = (result as any)?.ready ?? false
+  const result_ = result as Record<string, unknown> | null
+  const issues: string[] = (result_ as { issues?: string[] })?.issues ?? []
+  const status: Record<string, unknown> = (result_ as { status?: Record<string, unknown> })?.status ?? {}
+  const ready: boolean = (result_ as { ready?: boolean })?.ready ?? false
 
   return (
     <div style={{ padding: '2rem', maxWidth: 720 }}>

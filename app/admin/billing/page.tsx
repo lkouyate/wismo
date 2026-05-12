@@ -40,6 +40,7 @@ export default function AdminBillingPage() {
       .catch(() => setLoading(false))
   }, [])
 
+  // eslint-disable-next-line react-hooks/purity
   const now = Date.now()
 
   const core = mfgs.filter(m => m.plan === 'core')

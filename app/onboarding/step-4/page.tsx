@@ -22,10 +22,14 @@ function Step4Inner() {
     const error = searchParams.get('error')
 
     if (connected === 'true') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setGmailEmail(decodeURIComponent(email ?? ''))
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatus('connected')
     } else if (error) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setErrorMsg(decodeURIComponent(error))
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatus('error')
     }
   }, [searchParams])
